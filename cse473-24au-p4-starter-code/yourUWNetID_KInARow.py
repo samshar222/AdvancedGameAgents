@@ -16,10 +16,28 @@ TO PROVIDE A GOOD STRUCTURE FOR YOUR IMPLEMENTATION.
 from agent_base import KAgent
 from game_types import State, Game_Type
 
-AUTHORS = 'Jane Smith and Laura Lee' 
+AUTHORS = 'Sameeksha Sharma and Neha Pinni' 
 
 import time # You'll probably need this to avoid losing a
  # game due to exceeding a time limit.
+import torch
+from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
+
+import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+model_id = "meta-llama/Llama-3.2-1B"
+
+tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B")
+model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.2-1B")
+
+pipe = pipeline(
+    "text-generation", 
+    model=model_id,
+    tokenizer=tokenizer,
+    pad_token_id=tokenizer.eos_token_id  # Set the pad_token_id to eos_token_id
+)
+
 
 # Create your own type of agent by subclassing KAgent:
 
@@ -32,7 +50,7 @@ class OurAgent(KAgent):  # Keep the class name "OurAgent" so a game master
         if twin: self.nickname += '2'
         self.long_name = 'Templatus Skeletus'
         if twin: self.long_name += ' II'
-        self.persona = 'bland'
+        self.persona = 'strategic'
         self.voice_info = {'Chrome': 10, 'Firefox': 2, 'other': 0}
         self.playing = "don't know yet" # e.g., "X" or "O".
 
@@ -68,19 +86,16 @@ class OurAgent(KAgent):  # Keep the class name "OurAgent" so a game master
    
     # The core of your agent's ability should be implemented here:             
     def makeMove(self, currentState, currentRemark, timeLimit=10000):
-        #print("makeMove has been called")
-
-        depth = 3 # idk fs ... we can change this later depending on testing 
+        # Existing decision-making code...
+        depth = 3
         bestScore, bestMove, _ = self.minimax(state=currentState, depthRemaining=depth, pruning=True, alpha=float("-inf"), beta=float("inf"))
 
-        # case where no valid move is found 
+        # Case where no valid move is found 
         if bestMove is None: 
-            return [[[0,0], currentState], "stuck!"]
-        
-        newState = self.applyMove(currentState, bestMove)
-        newRemark = f"I chose this move because it seemed best for {self.playing}."
+            return [[[0,0], currentState], self.generateUtterance(currentState, "No valid moves!")]
 
-        #print("Returning from makeMove")
+        newState = self.applyMove(currentState, bestMove)
+        newRemark = self.generateUtterance(currentState, "Choosing the best move.")
         return [[bestMove, newState], newRemark]
 
         # print("code to compute a good move should go here.")
@@ -156,6 +171,36 @@ class OurAgent(KAgent):  # Keep the class name "OurAgent" so a game master
 
     # HELPER FUNCTIONS: 
 
+    # Generate an intelligent, persona-specific utterance using the LLM
+    def generateUtterance(self, state, reason):
+        prompt = f"Persona: {self.persona}\nReason: {reason}\nGame state: {state}\n"
+        response = pipe(prompt, max_length=100, num_return_sequences=1, truncation=True)
+        generated_text = response[0]['generated_text']
+        return generated_text.split("\n")[0]  # Get only the first line to avoid too verbose output.
+
+
+    # def generateUtterance(self, state, reason):
+    #     # Generate persona-specific utterance
+    #     if self.persona == 'bland':
+    #         return f"{self.long_name}: {reason}. {self.gameStateComment(state)}"
+    #     elif self.persona == 'cheerful':
+    #         return f"{self.long_name} says: Yay! {reason}! {self.gameStateComment(state)}"
+    #     elif self.persona == 'serious':
+    #         return f"{self.long_name}: {reason}. Here are my thoughts on the current state: {self.gameStateComment(state)}"
+    #     # Add more persona types as needed
+    #     else:
+    #         return f"{self.long_name}: {reason}. {self.gameStateComment(state)}"
+        
+    # def gameStateComment(self, state):
+    #     # Generate game-state-specific comment
+    #     # This is a very basic example and should be improved
+    #     if self.isTerminal(state):
+    #         return "The game is almost over!"
+    #     elif self.countPotential(state, self.playing) > self.countPotential(state, self.other(self.playing)):
+    #         return "I have the upper hand right now."
+    #     else:
+    #         return "I need to make a strong move to gain an advantage."
+
     def applyMove(self, state, move):
         new_state = State(old=state) # making a deep copy
         i, j = move
@@ -203,6 +248,9 @@ class OurAgent(KAgent):  # Keep the class name "OurAgent" so a game master
             if " " in row: 
                 return False
         return True
+    
+    def other(self, player):
+        return 'X' if player == 'O' else 'O'
  
 # OPTIONAL THINGS TO KEEP TRACK OF:
 
