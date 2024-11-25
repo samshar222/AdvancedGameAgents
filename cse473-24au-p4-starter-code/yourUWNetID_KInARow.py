@@ -24,6 +24,7 @@ import torch
 from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
 
 import os
+import random;
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 model_id = "meta-llama/Llama-3.2-1B"
@@ -173,10 +174,47 @@ class OurAgent(KAgent):  # Keep the class name "OurAgent" so a game master
 
     # Generate an intelligent, persona-specific utterance using the LLM
     def generateUtterance(self, state, reason):
-        prompt = f"Persona: {self.persona}\nReason: {reason}\nGame state: {state}\n"
-        response = pipe(prompt, max_length=100, num_return_sequences=1, truncation=True)
-        generated_text = response[0]['generated_text']
-        return generated_text.split("\n")[0]  # Get only the first line to avoid too verbose output.
+        sarcastic_utterances = [
+            "How's that for random?", "Flip!", "Spin!", "I hope this is my lucky day!",
+            "How's this move for high noise to signal ratio?", "Uniformly distributed. That's me.",
+            "Maybe I'll look into Bayes' Nets in the future.", "Eenie Meenie Miney Mo. I hope I'm getting K in a row.",
+            "Your choice is probably more informed than mine.", "If I only had a brain."
+        ]
+        
+        kind_utterances = [
+            "I'd while away the hours, playing K in a Row.", "So much fun.", "Roll the dice!",
+            "Yes, I am on a roll -- of my virtual dice.", "randint is my cousin.",
+            "I like to spread my influence around on the board.", "Let's see if lady luck is on my side today!",
+            "Watch me work some RNG magic.", "Feeling lucky? Here we go!", "Is it time for a game of chance?"
+        ]
+        
+        funny_utterances = [
+            "I think I'm developing a winning streak!", "Guessing games are my forte.", "Is this my moment of glory?",
+            "Statistically, I should win soon, right?", "Here's a wild guess!", "Another move, another chance.",
+            "The odds are ever in my favor.", "Let's see if lady luck is on my side today!"
+        ]
+        
+        if self.persona == "sarcastic":
+            example_utterances = sarcastic_utterances
+        elif self.persona == "kind":
+            example_utterances = kind_utterances
+        elif self.persona == "funny":
+            example_utterances = funny_utterances
+        else:
+            example_utterances = ["I hope you have a great game!", "Let's enjoy this game together!"]
+        
+        random_comment = random.choice(example_utterances)
+
+        prompt = f"You are playing an opponent in Tic Tac Toe. Respond with a kind sentence to your opponent. This is an example {random_comment}"
+        prompt_tokens = tokenizer(prompt, return_tensors="pt")
+        input_ids = prompt_tokens["input_ids"]
+        attention_mask = prompt_tokens["attention_mask"]
+        start_index = input_ids.shape[-1]
+        output = model.generate(input_ids, attention_mask=attention_mask, num_return_sequences=1, max_new_tokens=50, pad_token_id=tokenizer.eos_token_id)
+        generation_output = output[0][start_index:]
+        generation_text = tokenizer.decode(generation_output, skip_special_tokens=True)
+        
+        return generation_text.strip()
 
 
     # def generateUtterance(self, state, reason):
