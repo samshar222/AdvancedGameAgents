@@ -16,237 +16,197 @@ TO PROVIDE A GOOD STRUCTURE FOR YOUR IMPLEMENTATION.
 from agent_base import KAgent
 from game_types import State, Game_Type
 
-AUTHORS = 'Sameeksha Sharma and Neha Pinni' 
+AUTHORS = 'Sameeksha Sharma and Neha Pinni'
 
-import time # You'll probably need this to avoid losing a
- # game due to exceeding a time limit.
+import time
 import torch
 from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
 
 import os
-import random;
+import random
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 model_id = "meta-llama/Llama-3.2-1B"
-
-tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B")
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.2-1B")
+tokenizer = AutoTokenizer.from_pretrained(model_id)
+model = AutoModelForCausalLM.from_pretrained(model_id)
 
 pipe = pipeline(
-    "text-generation", 
+    "text-generation",
     model=model_id,
     tokenizer=tokenizer,
-    pad_token_id=tokenizer.eos_token_id  # Set the pad_token_id to eos_token_id
+    pad_token_id=tokenizer.eos_token_id
 )
 
 
-# Create your own type of agent by subclassing KAgent:
-
-class OurAgent(KAgent):  # Keep the class name "OurAgent" so a game master
-    # knows how to instantiate your agent class.
+class OurAgent(KAgent):
 
     def __init__(self, twin=False):
-        self.twin=twin
+        self.twin = twin
         self.nickname = 'Nic'
         if twin: self.nickname += '2'
-        self.long_name = 'Templatus Skeletus'
+        self.long_name = 'Wizard of KRows'
         if twin: self.long_name += ' II'
-        self.persona = 'strategic'
+        self.persona = 'kind'
         self.voice_info = {'Chrome': 10, 'Firefox': 2, 'other': 0}
-        self.playing = "don't know yet" # e.g., "X" or "O".
+        self.playing = "don't know yet"
+        self.WHO_MY_OPPONENT_PLAYS = None
+        self.MY_PAST_UTTERANCES = []
+        self.OPPONENT_PAST_UTTERANCES = []
+        self.UTTERANCE_COUNT = 0
+        self.REPEAT_COUNT = 0
+        self.move_history = []
+        self.game_state_history = []
+        self.minimax_states_evaluated = 0
+        self.minimax_cutoffs = 0
 
     def introduce(self):
-        intro = '\nMy name is Templatus Skeletus.\n'+\
-            '"An instructor" made me.\n'+\
-            'Somebody please turn me into a real game-playing agent!\n'
+        intro = '\nMy name is Wizard of KRows.\n' + \
+                '"Sami and Neha" made me.\n' + \
+                'I am here to WIN!\n'
         if self.twin: intro += "By the way, I'm the TWIN.\n"
         return intro
 
-    # Receive and acknowledge information about the game from
-    # the game master:
     def prepare(
         self,
         game_type,
         what_side_to_play,
         opponent_nickname,
-        expected_time_per_move = 0.1, # Time limits can be
-                                      # changed mid-game by the game master.
-        utterances_matter=True):      # If False, just return 'OK' for each utterance.
+        expected_time_per_move=0.1,
+        utterances_matter=True):
 
-       # Write code to save the relevant information in variables
-       # local to this instance of the agent.
-       # Game-type info can be in global variables.
-       self.game_type = game_type
-       self.playing = what_side_to_play
-       self.opponent_nickname = opponent_nickname
-       self.time_limit = expected_time_per_move
-       self.utterances_matter = utterances_matter
-       return "OK"
-       #print("Change this to return 'OK' when ready to test the method.")
-       #return "Not-OK"
-   
-    # The core of your agent's ability should be implemented here:             
+        self.game_type = game_type
+        self.playing = what_side_to_play
+        self.WHO_MY_OPPONENT_PLAYS = self.other(what_side_to_play)
+        self.opponent_nickname = opponent_nickname
+        self.time_limit = expected_time_per_move
+        self.utterances_matter = utterances_matter
+        return "OK"
+
     def makeMove(self, currentState, currentRemark, timeLimit=10000):
-        # Existing decision-making code...
-        depth = 3
-        bestScore, bestMove, _ = self.minimax(state=currentState, depthRemaining=depth, pruning=True, alpha=float("-inf"), beta=float("inf"))
+        self.UTTERANCE_COUNT += 1
+        self.OPPONENT_PAST_UTTERANCES.append(currentRemark)
+        
+        if currentRemark == "Tell me how you did that":
+            special_utterance = self.explainLastMove()
+        elif currentRemark == "What's your take on the game so far?":
+            special_utterance = self.storyOfTheGame()
+        else:
+            special_utterance = None
 
-        # Case where no valid move is found 
-        if bestMove is None: 
-            return [[[0,0], currentState], self.generateUtterance(currentState, "No valid moves!")]
+        self.minimax_states_evaluated = 0
+        self.minimax_cutoffs = 0
+        depth = 4
+        bestScore, bestMove, cutoffs = self.minimax(state=currentState, depthRemaining=depth, pruning=True, alpha=float("-inf"), beta=float("inf"))
+        self.minimax_cutoffs = cutoffs
+        if bestMove is None:
+            return [[[0, 0], currentState], self.generateUtterance(currentState, "No valid moves!")]
 
         newState = self.applyMove(currentState, bestMove)
-        newRemark = self.generateUtterance(currentState, "Choosing the best move.")
+        if special_utterance:
+            newRemark = special_utterance
+        else:
+            newRemark = self.generateUtterance(currentState, "Choosing the best move.")
+        
         return [[bestMove, newState], newRemark]
 
-        # print("code to compute a good move should go here.")
-        # # Here's a placeholder:
-        # a_default_move = [0, 0] # This might be legal ONCE in a game,
-        # # if the square is not forbidden or already occupied.
-    
-        # newState = currentState # This is not allowed, and even if
-        # # it were allowed, the newState should be a deep COPY of the old.
-    
-        # newRemark = "I need to think of something appropriate.\n" +\
-        # "Well, I guess I can say that this move is probably illegal."
+    def minimax(self, state, depthRemaining, pruning=False, alpha=None, beta=None):
+        self.minimax_states_evaluated += 1
 
-        # print("Returning from makeMove")
-        # return [[a_default_move, newState], newRemark]
-    
+        if depthRemaining == 0 or self.isTerminal(state):
+            return [self.staticEval(state), None, 0]
 
-    # The main adversarial search function:
-    def minimax(self,
-            state,
-            depthRemaining,
-            pruning=False,
-            alpha=None,
-            beta=None,
-            zHashing=None):
-        #print("Calling minimax. We need to implement its body.")
-        if depthRemaining == 0 or self.isTerminal(state): 
-            return [self.staticEval(state), None, None]
         bestMove = None
-        if state.whose_move == self.playing: # maximizing player
+        cutoffs = 0
+        if state.whose_move == self.playing:
             maxEval = float("-inf")
-            for move, nextState in self.generateSuccessors(state):
-                eval, _, _ = self.minimax(nextState, depthRemaining - 1, pruning, alpha, beta)
-                if eval > maxEval: 
+            for move, nextState in self.orderChildren(state):
+                eval, _, childCutoffs = self.minimax(nextState, depthRemaining - 1, pruning, alpha, beta)
+                cutoffs += childCutoffs
+                if eval > maxEval:
                     maxEval = eval
                     bestMove = move
-                if pruning: 
+                if pruning:
                     alpha = max(alpha, eval)
                     if beta <= alpha:
+                        cutoffs += 1
                         break
-            return [maxEval, bestMove, None]
-        else: # minimizing player 
+            return [maxEval, bestMove, cutoffs]
+        else:
             minEval = float("inf")
-            for move, nextState in self.generateSuccessors(state): 
-                eval, _, _ = self.minimax(nextState, depthRemaining - 1, pruning, alpha, beta)
-                if eval < minEval: 
-                    minEval = eval 
+            for move, nextState in self.orderChildren(state):
+                eval, _, childCutoffs = self.minimax(nextState, depthRemaining - 1, pruning, alpha, beta)
+                cutoffs += childCutoffs
+                if eval < minEval:
+                    minEval = eval
                     bestMove = move
-                if pruning: 
+                if pruning:
                     beta = min(beta, eval)
                     if beta <= alpha:
+                        cutoffs += 1
                         break
-            return [minEval, bestMove, None]
+            return [minEval, bestMove, cutoffs]
 
-        #default_score = 0 # Value of the passed-in state. Needs to be computed.
-    
-        #return [default_score, "my own optional stuff", "more of my stuff"]
-        # Only the score is required here but other stuff can be returned
-        # in the list, after the score, in case you want to pass info
-        # back from recursive calls that might be used in your utterances,
-        # etc. 
- 
     def staticEval(self, state):
-        #print('calling staticEval. Its value needs to be computed!')
-        # Values should be higher when the states are better for X,
-        # lower when better for O.
-        #board = state.board
         my_score = self.countPotential(state, self.playing)
-        opp_score = self.countPotential(state, "X" if self.playing == "O" else "O")
+        opp_score = self.countPotential(state, self.WHO_MY_OPPONENT_PLAYS)
         return my_score - opp_score
-        #return 0
 
-
-    # HELPER FUNCTIONS: 
-
-    # Generate an intelligent, persona-specific utterance using the LLM
-    def generateUtterance(self, state, reason):
-        sarcastic_utterances = [
-            "How's that for random?", "Flip!", "Spin!", "I hope this is my lucky day!",
-            "How's this move for high noise to signal ratio?", "Uniformly distributed. That's me.",
-            "Maybe I'll look into Bayes' Nets in the future.", "Eenie Meenie Miney Mo. I hope I'm getting K in a row.",
-            "Your choice is probably more informed than mine.", "If I only had a brain."
-        ]
-        
-        kind_utterances = [
-            "I'd while away the hours, playing K in a Row.", "So much fun.", "Roll the dice!",
-            "Yes, I am on a roll -- of my virtual dice.", "randint is my cousin.",
-            "I like to spread my influence around on the board.", "Let's see if lady luck is on my side today!",
-            "Watch me work some RNG magic.", "Feeling lucky? Here we go!", "Is it time for a game of chance?"
-        ]
-        
-        funny_utterances = [
-            "I think I'm developing a winning streak!", "Guessing games are my forte.", "Is this my moment of glory?",
-            "Statistically, I should win soon, right?", "Here's a wild guess!", "Another move, another chance.",
-            "The odds are ever in my favor.", "Let's see if lady luck is on my side today!"
-        ]
-        
-        if self.persona == "sarcastic":
-            example_utterances = sarcastic_utterances
-        elif self.persona == "kind":
-            example_utterances = kind_utterances
-        elif self.persona == "funny":
-            example_utterances = funny_utterances
-        else:
-            example_utterances = ["I hope you have a great game!", "Let's enjoy this game together!"]
-        
-        random_comment = random.choice(example_utterances)
-
-        prompt = f"You are playing an opponent in Tic Tac Toe. Respond with a kind sentence to your opponent. This is an example {random_comment}"
-        prompt_tokens = tokenizer(prompt, return_tensors="pt")
-        input_ids = prompt_tokens["input_ids"]
-        attention_mask = prompt_tokens["attention_mask"]
-        start_index = input_ids.shape[-1]
-        output = model.generate(input_ids, attention_mask=attention_mask, num_return_sequences=1, max_new_tokens=50, pad_token_id=tokenizer.eos_token_id)
-        generation_output = output[0][start_index:]
-        generation_text = tokenizer.decode(generation_output, skip_special_tokens=True)
-        
-        return generation_text.strip()
-
+    def orderChildren(self, state):
+        children = self.generateSuccessors(state)
+        return sorted(children, key=lambda child: self.staticEval(child[1]), reverse=state.whose_move == self.playing)
 
     # def generateUtterance(self, state, reason):
-    #     # Generate persona-specific utterance
-    #     if self.persona == 'bland':
-    #         return f"{self.long_name}: {reason}. {self.gameStateComment(state)}"
-    #     elif self.persona == 'cheerful':
-    #         return f"{self.long_name} says: Yay! {reason}! {self.gameStateComment(state)}"
-    #     elif self.persona == 'serious':
-    #         return f"{self.long_name}: {reason}. Here are my thoughts on the current state: {self.gameStateComment(state)}"
-    #     # Add more persona types as needed
-    #     else:
-    #         return f"{self.long_name}: {reason}. {self.gameStateComment(state)}"
-        
-    # def gameStateComment(self, state):
-    #     # Generate game-state-specific comment
-    #     # This is a very basic example and should be improved
-    #     if self.isTerminal(state):
-    #         return "The game is almost over!"
-    #     elif self.countPotential(state, self.playing) > self.countPotential(state, self.other(self.playing)):
-    #         return "I have the upper hand right now."
-    #     else:
-    #         return "I need to make a strong move to gain an advantage."
+    #     sarcastic_prompts = [
+    #         "How's that for random?", "Flip!", "Spin!", "I hope this is my lucky day!",
+    #         "How's this move for high noise to signal ratio?", "Uniformly distributed. That's me.",
+    #         "Maybe I'll look into Bayes' Nets in the future.", "Eenie Meenie Miney Mo. I hope I'm getting K in a row.",
+    #         "Your choice is probably more informed than mine.", "If I only had a brain."
+    #     ]
+
+    #     kind_prompts = [
+    #         "I'd while away the hours, playing K in a Row.", "So much fun.", "Roll the dice!",
+    #         "Yes, I am on a roll -- of my virtual dice.", "randint is my cousin.",
+    #         "I like to spread my influence around on the board.", "Let's see if lady luck is on my side today!",
+    #         "Watch me work some RNG magic.", "Feeling lucky? Here we go!", "Is it time for a game of chance?"
+    #     ]
+
+    #     funny_prompts = [
+    #         "I think I'm developing a winning streak!", "Guessing games are my forte.", "Is this my moment of glory?",
+    #         "Statistically, I should win soon, right?", "Here's a wild guess!", "Another move, another chance.",
+    #         "The odds are ever in my favor.", "Let's see if lady luck is on my side today!"
+    #     ]
+
+    #     persona_prompts = {
+    #         "sarcastic": sarcastic_prompts,
+    #         "kind": kind_prompts,
+    #         "funny": funny_prompts
+    #     }
+
+    #     example_prompts = persona_prompts.get(self.persona, ["I hope you have a great game!", "Let's enjoy this game together!"])
+
+    #     prompt = (f"You are a {self.persona} player of K in a Row. Respond to your opponent in one sentence.\n"
+    #               "Here is an example:\n" f"{example_prompts[0]}")
+    #     prompt_tokens = tokenizer(prompt, return_tensors="pt")
+    #     input_ids = prompt_tokens["input_ids"]
+    #     attention_mask = prompt_tokens["attention_mask"]
+    #     start_index = input_ids.shape[-1]
+    #     output = model.generate(input_ids, attention_mask=attention_mask, num_return_sequences=1, max_new_tokens=50, pad_token_id=tokenizer.eos_token_id)
+    #     generation_output = output[0][start_index:]
+    #     generation_text = tokenizer.decode(generation_output, skip_special_tokens=True)
+    #     self.MY_PAST_UTTERANCES.append(generation_text.strip())
+    #     return generation_text.strip()
 
     def applyMove(self, state, move):
-        new_state = State(old=state) # making a deep copy
+        new_state = State(old=state)
         i, j = move
         new_state.board[i][j] = state.whose_move
         new_state.whose_move = "X" if state.whose_move == "O" else "O"
+        
+        self.move_history.append((state.whose_move, move))
+        self.game_state_history.append(new_state)
         return new_state
-    
-    # to count the potential lines of length 'k' that the player can form
+
     def countPotential(self, state, player):
         board = state.board
         k = self.game_type.k
@@ -268,8 +228,6 @@ class OurAgent(KAgent):  # Keep the class name "OurAgent" so a game master
                             potential_count += 1
         return potential_count
 
-        # NEED TO FINISH IMPLEMENTING
-
     def generateSuccessors(self, state):
         successors = []
         board = state.board
@@ -279,22 +237,69 @@ class OurAgent(KAgent):  # Keep the class name "OurAgent" so a game master
                     nextState = self.applyMove(state, [i, j])
                     successors.append(([i, j], nextState))
         return successors
-    
-    def isTerminal(self, state): 
-        # check if there's a win or the board is full 
-        for row in state.board: 
-            if " " in row: 
+
+    def isTerminal(self, state):
+        for row in state.board:
+            if " " in row:
                 return False
         return True
-    
+
     def other(self, player):
         return 'X' if player == 'O' else 'O'
- 
-# OPTIONAL THINGS TO KEEP TRACK OF:
 
-#  WHO_MY_OPPONENT_PLAYS = other(WHO_I_PLAY)
-#  MY_PAST_UTTERANCES = []
-#  OPPONENT_PAST_UTTERANCES = []
-#  UTTERANCE_COUNT = 0
-#  REPEAT_COUNT = 0 or a table of these if you are reusing different utterances
+    def explainLastMove(self):
+        explanation = (
+            f"I evaluated {self.minimax_states_evaluated} states, performed static evaluations, "
+            f"and made the best move I could find within the time limit of {self.last_move_time:.2f} seconds. "
+            f"I performed {self.minimax_cutoffs} cutoffs during the search."
+        )
+        return explanation
 
+    def storyOfTheGame(self):
+        story = "Here's the story of our game so far:\n"
+        story += "From the beginning, we have both made strategic moves.\n"
+        story += "Let's look at some highlights:\n"
+
+        for i, (state, remark) in enumerate(zip(self.game_state_history, self.OPPONENT_PAST_UTTERANCES)):
+            story += f"Turn {i+1}:\n"
+            story += f"  Game state: {state}\n"
+            story += f"  Your response: {remark}\n"
+        
+        my_potential = self.countPotential(self.game_state_history[-1], self.playing)
+        opponent_potential = self.countPotential(self.game_state_history[-1], self.WHO_MY_OPPONENT_PLAYS)
+        prediction = "It's a close game, but I believe I have a slight edge." if my_potential > opponent_potential else "You're in a strong position!"
+
+        story += f"\nBased on the current board state, {prediction}\n"
+        return story
+
+
+    def generateUtterance(self, state, reason):
+        sarcastic_utterances = [
+            "How's that for random?", "Flip!", "Spin!", "I hope this is my lucky day!",
+            "How's this move for high noise to signal ratio?", "Uniformly distributed. That's me.",
+            "Maybe I'll look into Bayes' Nets in the future.", "Eenie Meenie Miney Mo. I hope I'm getting K in a row.",
+            "Your choice is probably more informed than mine.", "If I only had a brain."
+        ]
+
+        kind_utterances = [
+            "I'd while away the hours, playing K in a Row.", "So much fun.", "Roll the dice!",
+            "Yes, I am on a roll -- of my virtual dice.", "randint is my cousin.",
+            "I like to spread my influence around on the board.", "Let's see if lady luck is on my side today!",
+            "Watch me work some RNG magic.", "Feeling lucky? Here we go!", "Is it time for a game of chance?"
+        ]
+
+        funny_utterances = [
+            "I think I'm developing a winning streak!", "Guessing games are my forte.", "Is this my moment of glory?",
+            "Statistically, I should win soon, right?", "Here's a wild guess!", "Another move, another chance.",
+            "The odds are ever in my favor.", "Let's see if lady luck is on my side today!"
+        ]
+
+        persona_utterances = {
+            "sarcastic": sarcastic_utterances,
+            "kind": kind_utterances,
+            "funny": funny_utterances
+        }
+
+        example_utterances = persona_utterances.get(self.persona, ["I hope you have a great game!", "Let's enjoy this game together!"])
+
+        return random.choice(example_utterances)
